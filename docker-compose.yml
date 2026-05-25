@@ -1,0 +1,40 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      WORKER_CONFIG: /worker/config/worker.yaml
+      REDIS_URL: redis://redis:6379/0
+      VNC_PASSWORD: ${VNC_PASSWORD:-}
+    ports:
+      - "${WORKER_API_PORT:-8080}:8080"
+      - "${VNC_PORT_START:-5901}-5999:5901-5999"
+      - "${FLOWKIT_WS_PORT_START:-9222}-9722:9222-9722"
+      - "${CHROME_DEBUG_PORT_START:-12000}-12500:12000-12500"
+    shm_size: "1gb"
+    volumes:
+      - ./config:/worker/config
+      - ./worker/accounts:/worker/accounts
+      - ./worker/logs:/worker/logs
+      - ./chrome-profiles:/chrome-profiles
+      - ./extension:/extension
+
+volumes:
+  redis-data:

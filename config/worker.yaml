@@ -1,0 +1,47 @@
+worker_id: "vps-worker-1"
+api_port: 8080
+redis_url: "redis://redis:6379/0"
+autostart_accounts: true
+
+paths:
+  base_dir: "/opt/flow-worker"
+  chrome_profiles_dir: "/chrome-profiles"
+  extension_dir: "/extension"
+  runtime_extension_dir: "/tmp/flow-worker-extensions"
+  accounts_dir: "/worker/accounts"
+  logs_dir: "/worker/logs"
+
+browser:
+  chrome_binary: "google-chrome"
+  remote_debugging_host: "127.0.0.1"
+  remote_debugging_start_port: 12000
+  default_flow_url: "https://labs.google/fx/tools/flow"
+  launch_timeout_seconds: 45
+  navigation_timeout_ms: 60000
+  extra_args:
+    - "--no-sandbox"
+
+vnc:
+  display_start: 100
+  vnc_start_port: 5901
+  width: 1440
+  height: 1000
+  depth: 24
+  password: null
+
+queue:
+  name: "flow_jobs"
+  max_retries: 3
+  retry_delay_seconds: 60
+  scheduler_interval_seconds: 1.0
+  job_timeout_seconds: 900
+
+recovery:
+  enabled: true
+  max_attempts: 3
+  cooldown_seconds: 120
+
+flowkit:
+  enabled: true
+  ws_host: "127.0.0.1"
+  ws_start_port: 9222

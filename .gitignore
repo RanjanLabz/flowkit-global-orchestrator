@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+.tmp-flowkit/
+chrome-profiles/*
+!chrome-profiles/.gitkeep
+worker/accounts/*.yaml
+worker/logs/*.log
+worker/logs/*.log.*
