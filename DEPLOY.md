@@ -2,7 +2,37 @@
 
 This repo is designed so every new Ubuntu VPS can be created from GitHub with one command.
 
-## 1. Push This Repo To GitHub
+## Option A: Oracle VPS With Terraform
+
+Terraform files are in `terraform/`. They create an Oracle Cloud Infrastructure VPS, then cloud-init runs this repo's installer from GitHub.
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Edit `terraform.tfvars` with your OCI tenancy OCID, compartment OCID, and SSH public key. By default Terraform uses your local `~/.oci/config` `DEFAULT` profile for user, key, fingerprint, and region.
+
+Then run:
+
+```bash
+terraform init
+terraform plan
+terraform apply
+```
+
+After apply:
+
+```bash
+terraform output health_url
+terraform output ssh_command
+```
+
+The default Terraform shape is `VM.Standard.E4.Flex` because this worker installs amd64 Google Chrome. Do not use an ARM/Ampere shape unless the worker image is changed to support ARM Chromium.
+
+## Option B: Manual VPS Install
+
+### 1. Push This Repo To GitHub
 
 From your local machine:
 
@@ -23,7 +53,7 @@ git commit -m "Update Flow worker appliance"
 git push
 ```
 
-## 2. Install On A Fresh VPS
+### 2. Install On A Fresh VPS
 
 SSH into the VPS and run:
 
@@ -41,21 +71,21 @@ curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/install.sh | \
   bash
 ```
 
-## 3. Update Existing VPS
+### 3. Update Existing VPS
 
 ```bash
 cd /opt/flow-worker
 sudo bash ./scripts/update.sh
 ```
 
-## 4. Check Worker
+### 4. Check Worker
 
 ```bash
 curl http://127.0.0.1:8080/health
 docker compose ps
 ```
 
-## 5. Add Account
+### 5. Add Account
 
 ```bash
 curl -X POST http://127.0.0.1:8080/accounts \
