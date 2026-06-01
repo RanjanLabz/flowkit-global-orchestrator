@@ -45,7 +45,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         timeout_seconds=settings.queue.dispatch_timeout_seconds,
         api_key=settings.security.trusted_worker_api_key,
     )
-    registry = WorkerRegistry(settings.workers, worker_client, settings.config_path)
+    registry = WorkerRegistry(settings.workers, worker_client, store)
+    await registry.load()
     capacity = CapacityManager(registry)
     flow_config = FlowConfigManager(settings.config_path, settings.flow_settings)
     scheduler = GlobalScheduler(settings, queue, capacity, worker_client, store)

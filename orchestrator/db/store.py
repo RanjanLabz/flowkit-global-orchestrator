@@ -7,7 +7,7 @@ import asyncpg
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from orchestrator.queue.models import GlobalJob
-from orchestrator.workers.models import WorkerStatus
+from orchestrator.workers.models import WorkerRecord, WorkerStatus
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class OrchestratorStore:
             await self.mongo_db.worker_metrics.insert_one(payload)
             await self.mongo_db.workers.update_one(
                 {"_id": status.vps_id},
-                {"$set": {**payload, "_id": status.vps_id}},
+                {"$set": {**payload, "_id": status.vps_id, "id": status.vps_id}},
                 upsert=True,
             )
             return
@@ -133,6 +133,81 @@ class OrchestratorStore:
             status.model_dump_json(),
         )
 
+    async def list_worker_records(self) -> list[WorkerRecord]:
+        if self.mongo_db is not None:
+            records: list[WorkerRecord] = []
+            cursor = self.mongo_db.workers.find({"registered": True})
+            async for doc in cursor:
+                records.append(
+                    WorkerRecord(
+                        id=str(doc.get("id") or doc.get("_id")),
+                        base_url=str(doc["base_url"]),
+                        enabled=bool(doc.get("enabled", True)),
+                        max_jobs=int(doc.get("max_jobs", 10)),
+                        weight=int(doc.get("weight", 100)),
+                    )
+                )
+            return records
+        if self.pool is None:
+            return []
+        rows = await self.pool.fetch("select id, base_url, enabled, max_jobs, weight from workers order by id")
+        return [
+            WorkerRecord(
+                id=row["id"],
+                base_url=row["base_url"],
+                enabled=row["enabled"],
+                max_jobs=row["max_jobs"],
+                weight=row["weight"],
+            )
+            for row in rows
+        ]
+
+    async def save_worker_record(self, worker: WorkerRecord) -> None:
+        payload = worker.model_dump(mode="json", exclude={"status"})
+        if self.mongo_db is not None:
+            await self.mongo_db.workers.update_one(
+                {"_id": worker.id},
+                {
+                    "$set": {
+                        **payload,
+                        "_id": worker.id,
+                        "registered": True,
+                    }
+                },
+                upsert=True,
+            )
+            return
+        if self.pool is None:
+            return
+        await self.pool.execute(
+            """
+            insert into workers (id, base_url, enabled, max_jobs, weight)
+            values ($1,$2,$3,$4,$5)
+            on conflict (id) do update set
+              base_url = excluded.base_url,
+              enabled = excluded.enabled,
+              max_jobs = excluded.max_jobs,
+              weight = excluded.weight,
+              updated_at = now()
+            """,
+            worker.id,
+            worker.base_url,
+            worker.enabled,
+            worker.max_jobs,
+            worker.weight,
+        )
+
+    async def delete_worker_record(self, worker_id: str) -> None:
+        if self.mongo_db is not None:
+            await self.mongo_db.workers.update_one(
+                {"_id": worker_id},
+                {"$set": {"registered": False, "enabled": False}},
+                upsert=False,
+            )
+            return
+        if self.pool is not None:
+            await self.pool.execute("delete from workers where id = $1", worker_id)
+
     async def _migrate(self) -> None:
         assert self.pool is not None
         await self.pool.execute(
@@ -155,6 +230,7 @@ class OrchestratorStore:
               base_url text not null,
               enabled boolean not null default true,
               max_jobs integer not null default 10,
+              weight integer not null default 100,
               updated_at timestamptz not null default now()
             );
             create table if not exists accounts (
@@ -195,12 +271,14 @@ class OrchestratorStore:
             );
             """
         )
+        await self.pool.execute("alter table workers add column if not exists weight integer not null default 100")
 
     async def _migrate_mongo(self) -> None:
         assert self.mongo_db is not None
         await self.mongo_db.jobs.create_index("id", unique=True)
         await self.mongo_db.jobs.create_index("state")
         await self.mongo_db.jobs.create_index("created_at")
+        await self.mongo_db.workers.create_index("registered")
         await self.mongo_db.workers.create_index("vps_id")
         await self.mongo_db.worker_metrics.create_index("vps_id")
         await self.mongo_db.worker_metrics.create_index("last_seen")

@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from typing import Any
 
 from fastapi import HTTPException
-import yaml
 
 from orchestrator.config.settings import WorkerSeed
+from orchestrator.db.store import OrchestratorStore
 from orchestrator.workers.client import WorkerClient
 from orchestrator.workers.models import WorkerRecord, WorkerStatus
 
 
 class WorkerRegistry:
-    def __init__(self, seeds: list[WorkerSeed], client: WorkerClient, config_path: Path | None = None) -> None:
+    def __init__(self, seeds: list[WorkerSeed], client: WorkerClient, store: OrchestratorStore) -> None:
         self.client = client
-        self.config_path = config_path
+        self.store = store
+        self._seeds = seeds
         self._workers: dict[str, WorkerRecord] = {
             seed.id: WorkerRecord(
                 id=seed.id,
@@ -27,6 +26,33 @@ class WorkerRegistry:
             for seed in seeds
         }
         self._lock = asyncio.Lock()
+
+    async def load(self) -> None:
+        """Load registered VPS workers from persistent storage.
+
+        YAML/env workers are bootstrap seeds only. This lets a new install come
+        online, but later IP changes and add/remove operations live in the DB.
+        """
+        persisted = await self.store.list_worker_records()
+        async with self._lock:
+            if persisted:
+                previous_status = {worker.id: worker.status for worker in self._workers.values()}
+                self._workers = {
+                    worker.id: worker.model_copy(update={"status": previous_status.get(worker.id)})
+                    for worker in persisted
+                }
+            for seed in self._seeds:
+                if seed.id in self._workers:
+                    continue
+                worker = WorkerRecord(
+                    id=seed.id,
+                    base_url=seed.base_url,
+                    enabled=seed.enabled,
+                    max_jobs=seed.max_jobs,
+                    weight=seed.weight,
+                )
+                self._workers[worker.id] = worker
+                await self.store.save_worker_record(worker)
 
     def list_workers(self) -> list[WorkerRecord]:
         return sorted(self._workers.values(), key=lambda worker: worker.id)
@@ -46,7 +72,7 @@ class WorkerRegistry:
                 status=self._workers.get(seed.id).status if seed.id in self._workers else None,
             )
             self._workers[seed.id] = worker
-            self._persist_locked()
+            await self.store.save_worker_record(worker)
             return worker
 
     async def delete(self, worker_id: str) -> None:
@@ -54,7 +80,7 @@ class WorkerRegistry:
             if worker_id not in self._workers:
                 raise HTTPException(status_code=404, detail="worker not found")
             self._workers.pop(worker_id)
-            self._persist_locked()
+            await self.store.delete_worker_record(worker_id)
 
     async def refresh_one(self, worker: WorkerRecord) -> WorkerStatus:
         status = await self.client.health(worker)
@@ -71,22 +97,3 @@ class WorkerRegistry:
             if isinstance(status, WorkerStatus):
                 result.append(status)
         return result
-
-    def _persist_locked(self) -> None:
-        if self.config_path is None:
-            return
-        data: dict[str, Any] = {}
-        if self.config_path.exists():
-            data = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) or {}
-        data["workers"] = [
-            {
-                "id": worker.id,
-                "base_url": worker.base_url,
-                "enabled": worker.enabled,
-                "max_jobs": worker.max_jobs,
-                "weight": worker.weight,
-            }
-            for worker in self.list_workers()
-        ]
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        self.config_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")

@@ -32,8 +32,25 @@ R2_BUCKET=flowkit-generated-media
 R2_ACCESS_KEY_ID=...
 R2_SECRET_ACCESS_KEY=...
 R2_PUBLIC_BASE_URL=
-WORKER_BASE_URL=http://<oracle-vps-ip>:8080
-WORKER_ID=vps-1
+```
+
+Worker VPS records are stored in the database. Do not hardcode Oracle IPs in
+Render env for normal operation.
+
+Register or update a VPS worker:
+
+```bash
+curl -X POST https://flowkit-global-orchestrator.onrender.com/workers \
+  -H 'content-type: application/json' \
+  -H 'x-api-key: <orchestrator-api-key>' \
+  -d '{"id":"vps-1","base_url":"http://<oracle-public-ip>:8080","enabled":true,"max_jobs":10,"weight":100}'
+```
+
+Remove a VPS from scheduling:
+
+```bash
+curl -X DELETE https://flowkit-global-orchestrator.onrender.com/workers/vps-1 \
+  -H 'x-api-key: <orchestrator-api-key>'
 ```
 
 Health check:

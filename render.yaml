@@ -2,7 +2,7 @@ services:
   - type: web
     name: flowkit-global-orchestrator
     runtime: docker
-    plan: free
+    plan: starter
     dockerfilePath: ./docker/orchestrator.Dockerfile
     healthCheckPath: /health
     autoDeploy: true
@@ -36,8 +36,4 @@ services:
       - key: R2_SECRET_ACCESS_KEY
         sync: false
       - key: R2_PUBLIC_BASE_URL
-        sync: false
-      - key: WORKER_ID
-        value: vps-1
-      - key: WORKER_BASE_URL
         sync: false

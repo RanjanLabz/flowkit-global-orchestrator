@@ -13,12 +13,7 @@ queue:
   status_sync_interval_seconds: 5.0
   dispatch_timeout_seconds: 30
 
-workers:
-  - id: "vps-1"
-    base_url: "http://127.0.0.1:8080"
-    enabled: true
-    max_jobs: 10
-    weight: 100
+workers: []
 
 flow_settings:
   text_to_image:
