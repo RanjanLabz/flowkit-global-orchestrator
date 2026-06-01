@@ -1,1 +1,0 @@
-"""VPS worker appliance package."""
