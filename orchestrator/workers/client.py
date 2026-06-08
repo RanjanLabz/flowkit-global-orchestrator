@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
@@ -90,6 +90,16 @@ class WorkerClient:
 
     async def update_account_proxy(self, worker: WorkerRecord, account_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         response = await self._client.patch(f"{worker.base_url.rstrip('/')}/accounts/{account_id}/proxy", json=payload, headers=self._headers())
+        response.raise_for_status()
+        return dict(response.json())
+
+    async def install_extension(self, worker: WorkerRecord, payload: dict[str, Any]) -> dict[str, Any]:
+        response = await self._client.post(
+            f"{worker.base_url.rstrip('/')}/extensions/install",
+            json=payload,
+            headers=self._headers(),
+            timeout=90,
+        )
         response.raise_for_status()
         return dict(response.json())
 
