@@ -40,4 +40,5 @@ class WorkerRecord(BaseModel):
     enabled: bool = True
     max_jobs: int = Field(default=10, ge=1)
     weight: int = Field(default=100, ge=1)
+    api_key: str | None = None
     status: WorkerStatus | None = None

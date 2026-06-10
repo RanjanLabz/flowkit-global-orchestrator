@@ -50,6 +50,7 @@ class WorkerRegistry:
                     enabled=seed.enabled,
                     max_jobs=seed.max_jobs,
                     weight=seed.weight,
+                    api_key=seed.api_key,
                 )
                 self._workers[worker.id] = worker
                 await self.store.save_worker_record(worker)
@@ -63,13 +64,15 @@ class WorkerRegistry:
     async def upsert(self, payload: dict) -> WorkerRecord:
         seed = WorkerSeed.model_validate(payload)
         async with self._lock:
+            existing = self._workers.get(seed.id)
             worker = WorkerRecord(
                 id=seed.id,
                 base_url=seed.base_url,
                 enabled=seed.enabled,
                 max_jobs=seed.max_jobs,
                 weight=seed.weight,
-                status=self._workers.get(seed.id).status if seed.id in self._workers else None,
+                api_key=seed.api_key if seed.api_key is not None else (existing.api_key if existing else None),
+                status=existing.status if existing else None,
             )
             self._workers[seed.id] = worker
             await self.store.save_worker_record(worker)

@@ -145,12 +145,13 @@ class OrchestratorStore:
                         enabled=bool(doc.get("enabled", True)),
                         max_jobs=int(doc.get("max_jobs", 10)),
                         weight=int(doc.get("weight", 100)),
+                        api_key=doc.get("api_key"),
                     )
                 )
             return records
         if self.pool is None:
             return []
-        rows = await self.pool.fetch("select id, base_url, enabled, max_jobs, weight from workers order by id")
+        rows = await self.pool.fetch("select id, base_url, enabled, max_jobs, weight, api_key from workers order by id")
         return [
             WorkerRecord(
                 id=row["id"],
@@ -158,6 +159,7 @@ class OrchestratorStore:
                 enabled=row["enabled"],
                 max_jobs=row["max_jobs"],
                 weight=row["weight"],
+                api_key=row["api_key"],
             )
             for row in rows
         ]
@@ -181,13 +183,14 @@ class OrchestratorStore:
             return
         await self.pool.execute(
             """
-            insert into workers (id, base_url, enabled, max_jobs, weight)
-            values ($1,$2,$3,$4,$5)
+            insert into workers (id, base_url, enabled, max_jobs, weight, api_key)
+            values ($1,$2,$3,$4,$5,$6)
             on conflict (id) do update set
               base_url = excluded.base_url,
               enabled = excluded.enabled,
               max_jobs = excluded.max_jobs,
               weight = excluded.weight,
+              api_key = excluded.api_key,
               updated_at = now()
             """,
             worker.id,
@@ -195,6 +198,7 @@ class OrchestratorStore:
             worker.enabled,
             worker.max_jobs,
             worker.weight,
+            worker.api_key,
         )
 
     async def delete_worker_record(self, worker_id: str) -> None:
@@ -272,6 +276,7 @@ class OrchestratorStore:
             """
         )
         await self.pool.execute("alter table workers add column if not exists weight integer not null default 100")
+        await self.pool.execute("alter table workers add column if not exists api_key text")
 
     async def _migrate_mongo(self) -> None:
         assert self.mongo_db is not None

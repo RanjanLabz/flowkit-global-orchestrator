@@ -26,7 +26,7 @@ class WorkerClient:
     async def health(self, worker: WorkerRecord) -> WorkerStatus:
         base_url = worker.base_url.rstrip("/")
         try:
-            response = await self._client.get(f"{base_url}/health", headers=self._headers())
+            response = await self._client.get(f"{base_url}/health", headers=self._headers(worker.api_key))
             response.raise_for_status()
             health = response.json()
             accounts = await self.accounts(worker)
@@ -59,13 +59,13 @@ class WorkerClient:
             return WorkerStatus(vps_id=worker.id, base_url=base_url, online=False, max_jobs=worker.max_jobs, error=str(exc))
 
     async def accounts(self, worker: WorkerRecord) -> list[dict[str, Any]]:
-        response = await self._request_with_retries("GET", f"{worker.base_url.rstrip('/')}/accounts")
+        response = await self._request_with_retries("GET", f"{worker.base_url.rstrip('/')}/accounts", worker_api_key=worker.api_key)
         response.raise_for_status()
         data = response.json()
         return list(data) if isinstance(data, list) else []
 
     async def create_account(self, worker: WorkerRecord, payload: dict[str, Any]) -> dict[str, Any]:
-        response = await self._client.post(f"{worker.base_url.rstrip('/')}/accounts", json=payload, headers=self._headers())
+        response = await self._client.post(f"{worker.base_url.rstrip('/')}/accounts", json=payload, headers=self._headers(worker.api_key))
         response.raise_for_status()
         return dict(response.json())
 
@@ -73,23 +73,23 @@ class WorkerClient:
         response = await self._client.delete(
             f"{worker.base_url.rstrip('/')}/accounts/{account_id}",
             params={"remove_profile": str(remove_profile).lower()},
-            headers=self._headers(),
+            headers=self._headers(worker.api_key),
         )
         response.raise_for_status()
         return dict(response.json())
 
     async def account_action(self, worker: WorkerRecord, account_id: str, action: str) -> dict[str, Any]:
-        response = await self._client.post(f"{worker.base_url.rstrip('/')}/accounts/{account_id}/{action}", headers=self._headers())
+        response = await self._client.post(f"{worker.base_url.rstrip('/')}/accounts/{account_id}/{action}", headers=self._headers(worker.api_key))
         response.raise_for_status()
         return dict(response.json())
 
     async def update_account_settings(self, worker: WorkerRecord, account_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        response = await self._client.patch(f"{worker.base_url.rstrip('/')}/accounts/{account_id}/settings", json=payload, headers=self._headers())
+        response = await self._client.patch(f"{worker.base_url.rstrip('/')}/accounts/{account_id}/settings", json=payload, headers=self._headers(worker.api_key))
         response.raise_for_status()
         return dict(response.json())
 
     async def update_account_proxy(self, worker: WorkerRecord, account_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        response = await self._client.patch(f"{worker.base_url.rstrip('/')}/accounts/{account_id}/proxy", json=payload, headers=self._headers())
+        response = await self._client.patch(f"{worker.base_url.rstrip('/')}/accounts/{account_id}/proxy", json=payload, headers=self._headers(worker.api_key))
         response.raise_for_status()
         return dict(response.json())
 
@@ -97,7 +97,7 @@ class WorkerClient:
         response = await self._client.post(
             f"{worker.base_url.rstrip('/')}/extensions/install",
             json=payload,
-            headers=self._headers(),
+            headers=self._headers(worker.api_key),
             timeout=90,
         )
         response.raise_for_status()
@@ -115,26 +115,26 @@ class WorkerClient:
             "preferred_account_id": job.preferred_account_id,
             **job.payload,
         }
-        response = await self._request_with_retries("POST", f"{worker.base_url.rstrip('/')}/jobs", json=body)
+        response = await self._request_with_retries("POST", f"{worker.base_url.rstrip('/')}/jobs", json=body, worker_api_key=worker.api_key)
         response.raise_for_status()
         return dict(response.json())
 
     async def job(self, worker: WorkerRecord, job_id: str) -> dict[str, Any]:
-        response = await self._request_with_retries("GET", f"{worker.base_url.rstrip('/')}/jobs/{job_id}")
+        response = await self._request_with_retries("GET", f"{worker.base_url.rstrip('/')}/jobs/{job_id}", worker_api_key=worker.api_key)
         response.raise_for_status()
         return dict(response.json())
 
     async def media(self, worker: WorkerRecord, media_path: str, range_header: str | None = None) -> httpx.Response:
-        headers = self._headers()
+        headers = self._headers(worker.api_key)
         if range_header:
             headers["range"] = range_header
         return await self._client.get(f"{worker.base_url.rstrip('/')}{media_path}", headers=headers)
 
-    async def _request_with_retries(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+    async def _request_with_retries(self, method: str, url: str, worker_api_key: str | None = None, **kwargs: Any) -> httpx.Response:
         last_exc: Exception | None = None
         for attempt in range(1, self._retries + 1):
             try:
-                return await self._client.request(method, url, headers=self._headers(), **kwargs)
+                return await self._client.request(method, url, headers=self._headers(worker_api_key), **kwargs)
             except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError, httpx.RemoteProtocolError) as exc:
                 last_exc = exc
                 if attempt >= self._retries:
@@ -143,8 +143,9 @@ class WorkerClient:
         assert last_exc is not None
         raise last_exc
 
-    def _headers(self) -> dict[str, str]:
-        return {"x-api-key": self._api_key} if self._api_key else {}
+    def _headers(self, worker_api_key: str | None = None) -> dict[str, str]:
+        key = worker_api_key or self._api_key
+        return {"x-api-key": key} if key else {}
 
     def _available_account_slots(self, accounts: list[dict[str, Any]]) -> int:
         available = 0
